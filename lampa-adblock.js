@@ -13,10 +13,15 @@
         /adservice\.google/i,
         /pagead/i,
         /\/ads?\//i,
+        /\/ad\//i,
         /\/advert/i,
         /\/banner/i,
+        /\/preroll/i,
+        /\/midroll/i,
+        /\/postroll/i,
         /vast/i,
         /vmap/i,
+        /vpaid/i,
         /ima3?\.js/i,
         /adfox/i,
         /yandex.*\/ads/i,
@@ -24,7 +29,11 @@
         /mc\.yandex\.ru\/metrika/i,
         /betweendigital/i,
         /buzzoola/i,
-        /videonow/i
+        /videonow/i,
+        /franeski\.net/i,
+        /traffim\.com/i,
+        /adman/i,
+        /adserver/i
     ];
 
     function isBlocked(url) {
@@ -143,13 +152,32 @@
 
             // Some builds expose ad playback hooks; attempt to neutralize common names
             var noop = function () { return false; };
-            ['ad', 'ads', 'preroll', 'vast', 'commercial'].forEach(function (name) {
+            ['ad', 'ads', 'preroll', 'midroll', 'vast', 'commercial', 'advertisement'].forEach(function (name) {
                 try {
                     if (typeof Lampa.Player[name] === 'function') {
                         Lampa.Player[name] = noop;
                     }
                 } catch (e) {}
             });
+
+            // Try to detect and skip preroll: if playback starts from 0 and looks like an ad,
+            // attempt to jump forward. Heuristic only, to avoid breaking normal playback.
+            try {
+                if (Lampa.PlayerVideo && Lampa.PlayerVideo.listener && Lampa.PlayerVideo.listener.follow) {
+                    Lampa.PlayerVideo.listener.follow('timeupdate', function (e) {
+                        try {
+                            var dur = (e && e.duration) || (Lampa.PlayerVideo.duration && Lampa.PlayerVideo.duration()) || 0;
+                            var cur = (e && e.current) || (Lampa.PlayerVideo.time && Lampa.PlayerVideo.time()) || 0;
+                            var url = (Lampa.PlayerVideo.url && Lampa.PlayerVideo.url()) || '';
+                            // Heuristic: very short clip at very start or known ad URL
+                            if (dur > 0 && dur <= 120 && cur < 2 && (isBlocked(url) || /ad|preroll|promo|commercial/i.test(String(url)))) {
+                                log('Attempting to skip preroll');
+                                if (Lampa.PlayerVideo.to) Lampa.PlayerVideo.to(dur);
+                            }
+                        } catch (err) {}
+                    });
+                }
+            } catch (e) {}
 
             Lampa.Player.__adblock_hooked = true;
             log('Player hooks installed');
